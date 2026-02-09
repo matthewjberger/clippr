@@ -32,7 +32,6 @@ pub struct Cli {
     )]
     pub chunk_secs: f64,
 
-    #[cfg(feature = "gui")]
     #[arg(long, help = "Launch the graphical interface")]
     pub gui: bool,
 }

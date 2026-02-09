@@ -1,6 +1,5 @@
 pub mod encode;
 pub mod error;
-#[cfg(feature = "gui")]
 pub mod gui;
 pub mod probe;
 pub mod strategy;

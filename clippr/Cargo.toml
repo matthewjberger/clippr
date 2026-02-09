@@ -1,6 +1,6 @@
 [package]
 name = "clippr"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Convert MP4 to chunked GitHub-friendly GIFs"
 authors = ["Matthew Berger <matthewjordanberger@gmail.com>"]
@@ -13,12 +13,9 @@ rust-version = "1.85"
 keywords = ["gif", "mp4", "video", "ffmpeg", "converter"]
 categories = ["command-line-utilities", "multimedia::video"]
 
-[features]
-gui = ["nightshade"]
-
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-nightshade = { version = "0.6.70", features = ["egui", "file_dialog"], optional = true }
+nightshade = { version = "0.6.70", features = ["egui", "file_dialog"] }

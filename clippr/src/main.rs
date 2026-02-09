@@ -6,30 +6,13 @@ use cli::Cli;
 fn main() {
     let args = Cli::parse();
 
-    #[cfg(feature = "gui")]
-    let launch_gui = args.gui || args.input.is_none();
-
-    #[cfg(not(feature = "gui"))]
-    let launch_gui = false;
-
-    if launch_gui {
-        #[cfg(feature = "gui")]
+    if args.gui || args.input.is_none() {
         if let Err(error) = clippr::gui::run() {
             eprintln!("error: {error}");
             std::process::exit(1);
         }
-        #[cfg(not(feature = "gui"))]
-        unreachable!();
     } else {
-        let input = match args.input {
-            Some(path) => path,
-            None => {
-                eprintln!(
-                    "error: no input file provided (compile with --features gui for the graphical interface)"
-                );
-                std::process::exit(1);
-            }
-        };
+        let input = args.input.unwrap();
 
         let options = clippr::ConvertOptions {
             input,
