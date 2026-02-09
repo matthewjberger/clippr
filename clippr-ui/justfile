@@ -1,0 +1,34 @@
+set windows-shell := ["powershell.exe"]
+export RUST_LOG := "info,wgpu_core=off"
+export RUST_BACKTRACE := "1"
+
+@just:
+    just --list
+
+build:
+    cargo build -r -p clippr-ui
+
+check:
+    cargo check -p clippr-ui --tests
+    cargo fmt -p clippr-ui -- --check
+
+format:
+    cargo fmt -p clippr-ui
+
+fix:
+    cargo clippy -p clippr-ui --tests --fix
+
+lint:
+    cargo clippy -p clippr-ui --tests -- -D warnings
+
+run:
+    cargo run -r -p clippr-ui
+
+run-cli *args:
+    cargo run -r -p clippr -- {{args}}
+
+test:
+    cargo test -p clippr-ui -- --nocapture
+
+watch:
+    cargo watch -x 'run -r -p clippr-ui'
