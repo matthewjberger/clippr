@@ -7,11 +7,11 @@ export RUST_BACKTRACE := "1"
 
 # Builds the project in release mode
 build:
-    cargo build -r
+    cargo build -r --workspace
 
 # Runs cargo check and format check
 check:
-    cargo check --all --tests
+    cargo check --workspace --tests
     cargo fmt --all -- --check
 
 # Generates and opens documentation
@@ -20,7 +20,7 @@ docs:
 
 # Fixes linting issues automatically
 fix:
-    cargo clippy --all --tests --fix
+    cargo clippy --workspace --tests --fix
 
 # Formats the code using cargo fmt
 format:
@@ -36,23 +36,27 @@ install-tools:
 
 # Runs linter and displays warnings
 lint:
-    cargo clippy --all --tests -- -D warnings
+    cargo clippy --workspace --tests -- -D warnings
 
-# Publishes the crate to crates.io
+# Publishes the clippr crate to crates.io
 publish-crate:
-    cargo publish
+    cargo publish -p clippr
 
 # Dry run of publishing the crate
 publish-crate-dry:
-    cargo publish --dry-run
+    cargo publish -p clippr --dry-run
 
 # Runs the CLI
-run *args:
-    cargo run -r -- {{args}}
+run-cli *args:
+    cargo run -r -p clippr -- {{args}}
+
+# Runs the GUI
+run-ui:
+    cargo run -r -p clippr-ui
 
 # Runs all tests
 test:
-    cargo test --all -- --nocapture
+    cargo test --workspace -- --nocapture
 
 # Checks for unused dependencies
 udeps:
@@ -70,15 +74,23 @@ licenses-check:
 licenses-html:
     cargo about generate about.hbs -o THIRD_PARTY_LICENSES.html
 
+# Vendors all dependencies into the vendor directory
+vendor:
+    cargo vendor
+
 # Displays version information for Rust tools
 @versions:
     rustc --version
     cargo fmt -- --version
     cargo clippy -- --version
 
-# Watches for changes and runs
-watch *args:
-    cargo watch -x 'run -r -- {{args}}'
+# Watches for changes and runs the CLI
+watch-cli *args:
+    cargo watch -x 'run -r -p clippr -- {{args}}'
+
+# Watches for changes and runs the GUI
+watch-ui:
+    cargo watch -x 'run -r -p clippr-ui'
 
 # Generates changelog using git-cliff
 changelog:
@@ -91,12 +103,12 @@ show-tag:
 # Shows the current version from Cargo.toml (Windows)
 [windows]
 show-version:
-    "v" + (Select-String -Path 'Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+    "v" + (Select-String -Path 'clippr/Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
 
 # Shows the current version from Cargo.toml (Unix)
 [unix]
 show-version:
-    @echo "v$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')"
+    @echo "v$(grep '^version = ' clippr/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')"
 
 # Deletes a git tag locally and remotely
 strip-tag tag:
@@ -106,44 +118,44 @@ strip-tag tag:
 # Pushes a version tag and commits (Windows)
 [windows]
 push-version:
-    $version = (Select-String -Path 'Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; git push origin "v$version"; git push
+    $version = (Select-String -Path 'clippr/Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; git push origin "v$version"; git push
 
 # Pushes a version tag and commits (Unix)
 [unix]
 push-version:
     #!/usr/bin/env bash
     set -euo pipefail
-    VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    VERSION=$(grep '^version = ' clippr/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
     git push origin "v$VERSION"
     git push
 
 # Creates a GitHub release for the current version (Windows)
 [windows]
 publish-release:
-    $version = (Select-String -Path 'Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; git cliff --latest | gh release create "v$version" --title "clippr-v$version" --notes-file -
+    $version = (Select-String -Path 'clippr/Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; git cliff --latest | gh release create "v$version" --title "clippr-v$version" --notes-file -
 
 # Creates a GitHub release for the current version (Unix)
 [unix]
 publish-release:
     #!/usr/bin/env bash
     set -euo pipefail
-    VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    VERSION=$(grep '^version = ' clippr/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
     git cliff --latest | gh release create "v$VERSION" --title "clippr-v$VERSION" --notes-file -
 
 # Shows the GitHub release for the current version (Windows)
 [windows]
 show-release:
-    $version = (Select-String -Path 'Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; gh release view "v$version"
+    $version = (Select-String -Path 'clippr/Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; gh release view "v$version"
 
 # Shows the GitHub release for the current version (Unix)
 [unix]
 show-release:
     #!/usr/bin/env bash
     set -euo pipefail
-    VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    VERSION=$(grep '^version = ' clippr/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
     gh release view "v$VERSION"
 
-# Deletes a GitHub release (by tag, e.g. v0.1.11) (Windows)
+# Deletes a GitHub release (by tag, e.g. v0.1.0) (Windows)
 [windows]
 strip-release tag:
     gh release delete {{tag}} --yes
@@ -151,7 +163,7 @@ strip-release tag:
     Write-Host "To delete the git tag as well, run:" -ForegroundColor Green
     Write-Host "  just strip-tag {{tag}}" -ForegroundColor Green
 
-# Deletes a GitHub release (by tag, e.g. v0.1.11) (Unix)
+# Deletes a GitHub release (by tag, e.g. v0.1.0) (Unix)
 [unix]
 strip-release tag:
     gh release delete {{tag}} --yes
@@ -162,21 +174,21 @@ strip-release tag:
 # Bumps the patch version, updates changelog, and creates a git tag (Windows)
 [windows]
 bump-patch-version:
-    $currentVersion = (Select-String -Path 'Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; $parts = $currentVersion.Split('.'); $newPatch = [int]$parts[2] + 1; $newVersion = "$($parts[0]).$($parts[1]).$newPatch"; Write-Host "Bumping version from $currentVersion to $newVersion"; (Get-Content 'Cargo.toml') -replace "^version = `"$currentVersion`"", "version = `"$newVersion`"" | Set-Content 'Cargo.toml'; cargo check --quiet; git add Cargo.toml Cargo.lock; git commit -m "chore: bump version to v$newVersion"; git cliff --tag "v$newVersion" -o CHANGELOG.md; git add CHANGELOG.md; git commit -m "chore: update changelog for v$newVersion"; git tag "v$newVersion"; Write-Host ""; Write-Host "Version bumped and tagged! To push, run:" -ForegroundColor Green; Write-Host "  just push-version" -ForegroundColor Green
+    $currentVersion = (Select-String -Path 'clippr/Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; $parts = $currentVersion.Split('.'); $newPatch = [int]$parts[2] + 1; $newVersion = "$($parts[0]).$($parts[1]).$newPatch"; Write-Host "Bumping version from $currentVersion to $newVersion"; (Get-Content 'clippr/Cargo.toml') -replace "^version = `"$currentVersion`"", "version = `"$newVersion`"" | Set-Content 'clippr/Cargo.toml'; cargo check --quiet; git add clippr/Cargo.toml Cargo.lock; git commit -m "chore: bump version to v$newVersion"; git cliff --tag "v$newVersion" -o CHANGELOG.md; git add CHANGELOG.md; git commit -m "chore: update changelog for v$newVersion"; git tag "v$newVersion"; Write-Host ""; Write-Host "Version bumped and tagged! To push, run:" -ForegroundColor Green; Write-Host "  just push-version" -ForegroundColor Green
 
 # Bumps the patch version, updates changelog, and creates a git tag (Unix)
 [unix]
 bump-patch-version:
     #!/usr/bin/env bash
     set -euo pipefail
-    CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    CURRENT_VERSION=$(grep '^version = ' clippr/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
     IFS='.' read -ra PARTS <<< "$CURRENT_VERSION"
     NEW_PATCH=$((PARTS[2] + 1))
     NEW_VERSION="${PARTS[0]}.${PARTS[1]}.$NEW_PATCH"
     echo "Bumping version from $CURRENT_VERSION to $NEW_VERSION"
-    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
+    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" clippr/Cargo.toml
     cargo check --quiet
-    git add Cargo.toml Cargo.lock
+    git add clippr/Cargo.toml Cargo.lock
     git commit -m "chore: bump version to v$NEW_VERSION"
     git cliff --tag "v$NEW_VERSION" -o CHANGELOG.md
     git add CHANGELOG.md
@@ -189,21 +201,21 @@ bump-patch-version:
 # Bumps the minor version, updates changelog, and creates a git tag (Windows)
 [windows]
 bump-minor-version:
-    $currentVersion = (Select-String -Path 'Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; $parts = $currentVersion.Split('.'); $newMinor = [int]$parts[1] + 1; $newVersion = "$($parts[0]).$newMinor.0"; Write-Host "Bumping version from $currentVersion to $newVersion"; (Get-Content 'Cargo.toml') -replace "^version = `"$currentVersion`"", "version = `"$newVersion`"" | Set-Content 'Cargo.toml'; cargo check --quiet; git add Cargo.toml Cargo.lock; git commit -m "chore: bump version to v$newVersion"; git cliff --tag "v$newVersion" -o CHANGELOG.md; git add CHANGELOG.md; git commit -m "chore: update changelog for v$newVersion"; git tag "v$newVersion"; Write-Host ""; Write-Host "Version bumped and tagged! To push, run:" -ForegroundColor Green; Write-Host "  just push-version" -ForegroundColor Green
+    $currentVersion = (Select-String -Path 'clippr/Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; $parts = $currentVersion.Split('.'); $newMinor = [int]$parts[1] + 1; $newVersion = "$($parts[0]).$newMinor.0"; Write-Host "Bumping version from $currentVersion to $newVersion"; (Get-Content 'clippr/Cargo.toml') -replace "^version = `"$currentVersion`"", "version = `"$newVersion`"" | Set-Content 'clippr/Cargo.toml'; cargo check --quiet; git add clippr/Cargo.toml Cargo.lock; git commit -m "chore: bump version to v$newVersion"; git cliff --tag "v$newVersion" -o CHANGELOG.md; git add CHANGELOG.md; git commit -m "chore: update changelog for v$newVersion"; git tag "v$newVersion"; Write-Host ""; Write-Host "Version bumped and tagged! To push, run:" -ForegroundColor Green; Write-Host "  just push-version" -ForegroundColor Green
 
 # Bumps the minor version, updates changelog, and creates a git tag (Unix)
 [unix]
 bump-minor-version:
     #!/usr/bin/env bash
     set -euo pipefail
-    CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    CURRENT_VERSION=$(grep '^version = ' clippr/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
     IFS='.' read -ra PARTS <<< "$CURRENT_VERSION"
     NEW_MINOR=$((PARTS[1] + 1))
     NEW_VERSION="${PARTS[0]}.$NEW_MINOR.0"
     echo "Bumping version from $CURRENT_VERSION to $NEW_VERSION"
-    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
+    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" clippr/Cargo.toml
     cargo check --quiet
-    git add Cargo.toml Cargo.lock
+    git add clippr/Cargo.toml Cargo.lock
     git commit -m "chore: bump version to v$NEW_VERSION"
     git cliff --tag "v$NEW_VERSION" -o CHANGELOG.md
     git add CHANGELOG.md
@@ -216,21 +228,21 @@ bump-minor-version:
 # Bumps the major version, updates changelog, and creates a git tag (Windows)
 [windows]
 bump-major-version:
-    $currentVersion = (Select-String -Path 'Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; $parts = $currentVersion.Split('.'); $newMajor = [int]$parts[0] + 1; $newVersion = "$newMajor.0.0"; Write-Host "Bumping version from $currentVersion to $newVersion"; (Get-Content 'Cargo.toml') -replace "^version = `"$currentVersion`"", "version = `"$newVersion`"" | Set-Content 'Cargo.toml'; cargo check --quiet; git add Cargo.toml Cargo.lock; git commit -m "chore: bump version to v$newVersion"; git cliff --tag "v$newVersion" -o CHANGELOG.md; git add CHANGELOG.md; git commit -m "chore: update changelog for v$newVersion"; git tag "v$newVersion"; Write-Host ""; Write-Host "Version bumped and tagged! To push, run:" -ForegroundColor Green; Write-Host "  just push-version" -ForegroundColor Green
+    $currentVersion = (Select-String -Path 'clippr/Cargo.toml' -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches.Groups[1].Value; $parts = $currentVersion.Split('.'); $newMajor = [int]$parts[0] + 1; $newVersion = "$newMajor.0.0"; Write-Host "Bumping version from $currentVersion to $newVersion"; (Get-Content 'clippr/Cargo.toml') -replace "^version = `"$currentVersion`"", "version = `"$newVersion`"" | Set-Content 'clippr/Cargo.toml'; cargo check --quiet; git add clippr/Cargo.toml Cargo.lock; git commit -m "chore: bump version to v$newVersion"; git cliff --tag "v$newVersion" -o CHANGELOG.md; git add CHANGELOG.md; git commit -m "chore: update changelog for v$newVersion"; git tag "v$newVersion"; Write-Host ""; Write-Host "Version bumped and tagged! To push, run:" -ForegroundColor Green; Write-Host "  just push-version" -ForegroundColor Green
 
 # Bumps the major version, updates changelog, and creates a git tag (Unix)
 [unix]
 bump-major-version:
     #!/usr/bin/env bash
     set -euo pipefail
-    CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    CURRENT_VERSION=$(grep '^version = ' clippr/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
     IFS='.' read -ra PARTS <<< "$CURRENT_VERSION"
     NEW_MAJOR=$((PARTS[0] + 1))
     NEW_VERSION="$NEW_MAJOR.0.0"
     echo "Bumping version from $CURRENT_VERSION to $NEW_VERSION"
-    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
+    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" clippr/Cargo.toml
     cargo check --quiet
-    git add Cargo.toml Cargo.lock
+    git add clippr/Cargo.toml Cargo.lock
     git commit -m "chore: bump version to v$NEW_VERSION"
     git cliff --tag "v$NEW_VERSION" -o CHANGELOG.md
     git add CHANGELOG.md

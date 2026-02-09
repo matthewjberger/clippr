@@ -2,6 +2,16 @@
 name = "clippr"
 version = "0.1.0"
 edition = "2024"
+description = "Convert MP4 to chunked GitHub-friendly GIFs"
+authors = ["Matthew Berger <matthewjordanberger@gmail.com>"]
+homepage = "https://github.com/matthewjberger/clippr"
+repository = "https://github.com/matthewjberger/clippr"
+documentation = "https://github.com/matthewjberger/clippr#readme"
+readme = "../README.md"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+keywords = ["gif", "mp4", "video", "ffmpeg", "converter"]
+categories = ["command-line-utilities", "multimedia::video"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
