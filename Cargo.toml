@@ -1,5 +1,5 @@
 [workspace]
-members = ["clippr", "clippr-ui"]
+members = ["clippr"]
 resolver = "3"
 
 [profile.release]

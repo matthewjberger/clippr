@@ -65,6 +65,7 @@ pub fn auto_encode(
     initial: &InitialParams,
     start_secs: f64,
     duration_secs: f64,
+    on_progress: &mut impl FnMut(&str),
 ) -> Result<u64> {
     let mut settings = EncodeSettings {
         width: initial.width,
@@ -81,13 +82,13 @@ pub fn auto_encode(
             duration_secs,
         };
 
-        eprintln!(
+        on_progress(&format!(
             "  attempt {}: {}px, {}fps, {} colors",
             attempt + 1,
             settings.width,
             settings.fps,
             COLOR_STEPS[settings.color_index]
-        );
+        ));
 
         let size = encode::encode(input, output, &params)?;
 

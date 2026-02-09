@@ -4,7 +4,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "clippr", about = "Convert MP4 to chunked GitHub-friendly GIFs")]
 pub struct Cli {
-    pub input: PathBuf,
+    pub input: Option<PathBuf>,
 
     #[arg(
         short,
@@ -31,4 +31,8 @@ pub struct Cli {
         help = "Duration of each chunk in seconds"
     )]
     pub chunk_secs: f64,
+
+    #[cfg(feature = "gui")]
+    #[arg(long, help = "Launch the graphical interface")]
+    pub gui: bool,
 }

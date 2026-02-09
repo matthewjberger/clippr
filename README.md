@@ -48,6 +48,7 @@ If the video is 3 seconds or shorter, a single `demo.gif` is produced without a 
 | `--fps` | `15` | Starting frames per second (capped at source framerate) |
 | `--colors` | `256` | Starting palette color count |
 | `--chunk-secs` | `3.0` | Duration of each chunk in seconds |
+| `--gui` | | Launch the graphical interface (requires `gui` feature) |
 
 ## How It Works
 
@@ -68,21 +69,17 @@ The source video is never modified.
 $ clippr recording.mp4
 input: 802x632, 30.0fps, 10.9s
 
-chunk 1/4: 0.0s - 3.0s -> recording_001.gif
-  attempt 1: 480px, 15fps, 256 colors
-  -> 4.75 MB
+segment: 0.0s - 3.0s (3.0s)
+  -> 4.75 MB (fits at full quality)
 
-chunk 2/4: 3.0s - 6.0s -> recording_002.gif
-  attempt 1: 480px, 15fps, 256 colors
-  -> 5.03 MB
+segment: 3.0s - 6.0s (3.0s)
+  -> 5.03 MB (fits at full quality)
 
-chunk 3/4: 6.0s - 9.0s -> recording_003.gif
-  attempt 1: 480px, 15fps, 256 colors
-  -> 3.04 MB
+segment: 6.0s - 9.0s (3.0s)
+  -> 3.04 MB (fits at full quality)
 
-chunk 4/4: 9.0s - 10.9s -> recording_004.gif
-  attempt 1: 480px, 15fps, 256 colors
-  -> 1.12 MB
+segment: 9.0s - 10.9s (1.9s)
+  -> 1.12 MB (fits at full quality)
 
 done — 4 chunk(s) written:
   recording_001.gif
@@ -90,6 +87,18 @@ done — 4 chunk(s) written:
   recording_003.gif
   recording_004.gif
 ```
+
+## GUI
+
+clippr includes an optional native GUI for selecting a video, configuring parameters,
+and running the conversion with live progress output. Enable it with the `gui` feature:
+
+```bash
+cargo install clippr --features gui
+clippr --gui
+```
+
+When compiled with the `gui` feature, running `clippr` with no arguments also launches the GUI.
 
 ## License
 

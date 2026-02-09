@@ -1,248 +1,49 @@
 mod cli;
-mod encode;
-mod error;
-mod probe;
-mod strategy;
 
 use clap::Parser;
 use cli::Cli;
-use encode::EncodeParams;
-use error::{Error, Result};
-use std::collections::VecDeque;
-use std::path::{Path, PathBuf};
-use strategy::InitialParams;
-
-const MIN_SPLIT_DURATION: f64 = 0.5;
-
-fn output_stem_from_args(input: &Path, output: Option<&Path>) -> Result<PathBuf> {
-    match output {
-        Some(path) => Ok(path.to_path_buf().with_extension("")),
-        None => {
-            let stem = input
-                .file_stem()
-                .ok_or_else(|| Error::InvalidInput("input has no file stem".into()))?;
-            Ok(input.with_file_name(stem))
-        }
-    }
-}
-
-fn chunk_output_path(stem: &Path, chunk_index: u32, chunk_count: u32) -> PathBuf {
-    if chunk_count == 1 {
-        stem.with_extension("gif")
-    } else {
-        let name = format!(
-            "{}_{:03}.gif",
-            stem.file_name().unwrap_or_default().to_string_lossy(),
-            chunk_index + 1,
-        );
-        stem.with_file_name(name)
-    }
-}
-
-fn temp_output_path(stem: &Path, index: u32) -> PathBuf {
-    let name = format!(
-        "{}.tmp_{:06}.gif",
-        stem.file_name().unwrap_or_default().to_string_lossy(),
-        index,
-    );
-    stem.with_file_name(name)
-}
-
-#[derive(Clone)]
-struct Segment {
-    start_secs: f64,
-    duration_secs: f64,
-}
-
-fn run() -> Result<()> {
-    let args = Cli::parse();
-
-    if !args.input.exists() {
-        return Err(Error::InputNotFound(args.input.clone()));
-    }
-
-    if args.max_size_mb <= 0.0 {
-        return Err(Error::InvalidInput("--max-size-mb must be positive".into()));
-    }
-
-    if args.chunk_secs <= 0.0 {
-        return Err(Error::InvalidInput("--chunk-secs must be positive".into()));
-    }
-
-    let info = probe::probe(&args.input)?;
-    eprintln!(
-        "input: {}x{}, {:.1}fps, {:.1}s",
-        info.width, info.height, info.framerate, info.duration_secs
-    );
-
-    let target_bytes = (args.max_size_mb * 1024.0 * 1024.0) as u64;
-    let output_stem = output_stem_from_args(&args.input, args.output.as_deref())?;
-    let initial_chunk_count = (info.duration_secs / args.chunk_secs).ceil() as u32;
-
-    if initial_chunk_count == 0 {
-        return Err(Error::InvalidInput("video has zero duration".into()));
-    }
-
-    let initial = InitialParams {
-        width: args.width.min(info.width),
-        fps: args.fps.min(info.framerate.ceil() as u32),
-        colors: args.colors,
-    };
-
-    let mut queue: VecDeque<Segment> = VecDeque::new();
-    for chunk_index in 0..initial_chunk_count {
-        let start_secs = chunk_index as f64 * args.chunk_secs;
-        let remaining = info.duration_secs - start_secs;
-        let duration_secs = remaining.min(args.chunk_secs);
-        if duration_secs > 0.0 {
-            queue.push_back(Segment {
-                start_secs,
-                duration_secs,
-            });
-        }
-    }
-
-    let mut temp_paths: Vec<PathBuf> = Vec::new();
-    let mut temp_counter: u32 = 0;
-
-    while let Some(segment) = queue.pop_front() {
-        let temp_path = temp_output_path(&output_stem, temp_counter);
-        temp_counter += 1;
-
-        eprintln!(
-            "\nsegment: {:.1}s - {:.1}s ({:.1}s)",
-            segment.start_secs,
-            segment.start_secs + segment.duration_secs,
-            segment.duration_secs,
-        );
-
-        let params = EncodeParams {
-            width: initial.width,
-            fps: initial.fps,
-            colors: initial.colors,
-            start_secs: segment.start_secs,
-            duration_secs: segment.duration_secs,
-        };
-
-        let size = encode::encode(&args.input, &temp_path, &params)?;
-
-        if size <= target_bytes {
-            let size_mb = size as f64 / (1024.0 * 1024.0);
-            eprintln!("  -> {:.2} MB (fits at full quality)", size_mb);
-            temp_paths.push(temp_path);
-            continue;
-        }
-
-        std::fs::remove_file(&temp_path)?;
-
-        if segment.duration_secs > MIN_SPLIT_DURATION {
-            let half = segment.duration_secs / 2.0;
-            eprintln!(
-                "  -> {:.2} MB (too large, splitting {:.1}s into 2x {:.1}s)",
-                size as f64 / (1024.0 * 1024.0),
-                segment.duration_secs,
-                half,
-            );
-            queue.push_front(Segment {
-                start_secs: segment.start_secs + half,
-                duration_secs: segment.duration_secs - half,
-            });
-            queue.push_front(Segment {
-                start_secs: segment.start_secs,
-                duration_secs: half,
-            });
-            continue;
-        }
-
-        eprintln!(
-            "  -> {:.2} MB (too large, segment too short to split — degrading quality)",
-            size as f64 / (1024.0 * 1024.0),
-        );
-
-        let temp_path = temp_output_path(&output_stem, temp_counter);
-        temp_counter += 1;
-
-        let size = strategy::auto_encode(
-            &args.input,
-            &temp_path,
-            target_bytes,
-            &initial,
-            segment.start_secs,
-            segment.duration_secs,
-        )?;
-
-        let size_mb = size as f64 / (1024.0 * 1024.0);
-        eprintln!("  -> {:.2} MB (degraded quality)", size_mb);
-        temp_paths.push(temp_path);
-    }
-
-    let final_count = temp_paths.len() as u32;
-    let mut outputs: Vec<PathBuf> = Vec::new();
-
-    for (index, temp_path) in temp_paths.iter().enumerate() {
-        let final_path = chunk_output_path(&output_stem, index as u32, final_count);
-        std::fs::rename(temp_path, &final_path)?;
-        outputs.push(final_path);
-    }
-
-    eprintln!("\ndone — {} chunk(s) written:", outputs.len());
-    for path in &outputs {
-        eprintln!("  {}", path.display());
-    }
-
-    Ok(())
-}
 
 fn main() {
-    if let Err(error) = run() {
-        eprintln!("error: {error}");
-        std::process::exit(1);
-    }
-}
+    let args = Cli::parse();
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    #[cfg(feature = "gui")]
+    let launch_gui = args.gui || args.input.is_none();
 
-    #[test]
-    fn single_chunk_produces_plain_gif_extension() {
-        let result = chunk_output_path(Path::new("demo"), 0, 1);
-        assert_eq!(result, PathBuf::from("demo.gif"));
-    }
+    #[cfg(not(feature = "gui"))]
+    let launch_gui = false;
 
-    #[test]
-    fn multi_chunk_produces_numbered_suffixes() {
-        let result = chunk_output_path(Path::new("demo"), 0, 4);
-        assert_eq!(result, PathBuf::from("demo_001.gif"));
+    if launch_gui {
+        #[cfg(feature = "gui")]
+        if let Err(error) = clippr::gui::run() {
+            eprintln!("error: {error}");
+            std::process::exit(1);
+        }
+        #[cfg(not(feature = "gui"))]
+        unreachable!();
+    } else {
+        let input = match args.input {
+            Some(path) => path,
+            None => {
+                eprintln!(
+                    "error: no input file provided (compile with --features gui for the graphical interface)"
+                );
+                std::process::exit(1);
+            }
+        };
 
-        let result = chunk_output_path(Path::new("demo"), 3, 4);
-        assert_eq!(result, PathBuf::from("demo_004.gif"));
-    }
+        let options = clippr::ConvertOptions {
+            input,
+            output: args.output,
+            max_size_mb: args.max_size_mb,
+            width: args.width,
+            fps: args.fps,
+            colors: args.colors,
+            chunk_secs: args.chunk_secs,
+        };
 
-    #[test]
-    fn chunk_path_preserves_parent_directory() {
-        let stem = Path::new("/tmp/output/demo");
-        let result = chunk_output_path(stem, 0, 3);
-        assert_eq!(result, PathBuf::from("/tmp/output/demo_001.gif"));
-    }
-
-    #[test]
-    fn output_stem_strips_extension_from_input() {
-        let result = output_stem_from_args(Path::new("video.mp4"), None).unwrap();
-        assert_eq!(result, PathBuf::from("video"));
-    }
-
-    #[test]
-    fn output_stem_uses_explicit_output_without_extension() {
-        let result =
-            output_stem_from_args(Path::new("video.mp4"), Some(Path::new("out.gif"))).unwrap();
-        assert_eq!(result, PathBuf::from("out"));
-    }
-
-    #[test]
-    fn output_stem_explicit_output_no_extension() {
-        let result =
-            output_stem_from_args(Path::new("video.mp4"), Some(Path::new("myoutput"))).unwrap();
-        assert_eq!(result, PathBuf::from("myoutput"));
+        if let Err(error) = clippr::convert(&options, |message| eprintln!("{message}")) {
+            eprintln!("error: {error}");
+            std::process::exit(1);
+        }
     }
 }

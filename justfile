@@ -52,7 +52,7 @@ run-cli *args:
 
 # Runs the GUI
 run-ui:
-    cargo run -r -p clippr-ui
+    cargo run -r -p clippr --features gui -- --gui
 
 # Runs all tests
 test:
@@ -90,7 +90,7 @@ watch-cli *args:
 
 # Watches for changes and runs the GUI
 watch-ui:
-    cargo watch -x 'run -r -p clippr-ui'
+    cargo watch -x 'run -r -p clippr --features gui -- --gui'
 
 # Generates changelog using git-cliff
 changelog:
