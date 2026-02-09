@@ -6,9 +6,13 @@ mod strategy;
 
 use clap::Parser;
 use cli::Cli;
+use encode::EncodeParams;
 use error::{Error, Result};
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use strategy::InitialParams;
+
+const MIN_SPLIT_DURATION: f64 = 0.5;
 
 fn output_stem_from_args(input: &Path, output: Option<&Path>) -> Result<PathBuf> {
     match output {
@@ -35,6 +39,21 @@ fn chunk_output_path(stem: &Path, chunk_index: u32, chunk_count: u32) -> PathBuf
     }
 }
 
+fn temp_output_path(stem: &Path, index: u32) -> PathBuf {
+    let name = format!(
+        "{}.tmp_{:06}.gif",
+        stem.file_name().unwrap_or_default().to_string_lossy(),
+        index,
+    );
+    stem.with_file_name(name)
+}
+
+#[derive(Clone)]
+struct Segment {
+    start_secs: f64,
+    duration_secs: f64,
+}
+
 fn run() -> Result<()> {
     let args = Cli::parse();
 
@@ -58,9 +77,9 @@ fn run() -> Result<()> {
 
     let target_bytes = (args.max_size_mb * 1024.0 * 1024.0) as u64;
     let output_stem = output_stem_from_args(&args.input, args.output.as_deref())?;
-    let chunk_count = (info.duration_secs / args.chunk_secs).ceil() as u32;
+    let initial_chunk_count = (info.duration_secs / args.chunk_secs).ceil() as u32;
 
-    if chunk_count == 0 {
+    if initial_chunk_count == 0 {
         return Err(Error::InvalidInput("video has zero duration".into()));
     }
 
@@ -70,40 +89,100 @@ fn run() -> Result<()> {
         colors: args.colors,
     };
 
-    let mut outputs: Vec<PathBuf> = Vec::new();
-
-    for chunk_index in 0..chunk_count {
+    let mut queue: VecDeque<Segment> = VecDeque::new();
+    for chunk_index in 0..initial_chunk_count {
         let start_secs = chunk_index as f64 * args.chunk_secs;
         let remaining = info.duration_secs - start_secs;
         let duration_secs = remaining.min(args.chunk_secs);
-
-        if duration_secs <= 0.0 {
-            break;
+        if duration_secs > 0.0 {
+            queue.push_back(Segment {
+                start_secs,
+                duration_secs,
+            });
         }
+    }
 
-        let output_path = chunk_output_path(&output_stem, chunk_index, chunk_count);
+    let mut temp_paths: Vec<PathBuf> = Vec::new();
+    let mut temp_counter: u32 = 0;
+
+    while let Some(segment) = queue.pop_front() {
+        let temp_path = temp_output_path(&output_stem, temp_counter);
+        temp_counter += 1;
 
         eprintln!(
-            "\nchunk {}/{}: {:.1}s - {:.1}s -> {}",
-            chunk_index + 1,
-            chunk_count,
-            start_secs,
-            start_secs + duration_secs,
-            output_path.display()
+            "\nsegment: {:.1}s - {:.1}s ({:.1}s)",
+            segment.start_secs,
+            segment.start_secs + segment.duration_secs,
+            segment.duration_secs,
         );
+
+        let params = EncodeParams {
+            width: initial.width,
+            fps: initial.fps,
+            colors: initial.colors,
+            start_secs: segment.start_secs,
+            duration_secs: segment.duration_secs,
+        };
+
+        let size = encode::encode(&args.input, &temp_path, &params)?;
+
+        if size <= target_bytes {
+            let size_mb = size as f64 / (1024.0 * 1024.0);
+            eprintln!("  -> {:.2} MB (fits at full quality)", size_mb);
+            temp_paths.push(temp_path);
+            continue;
+        }
+
+        std::fs::remove_file(&temp_path)?;
+
+        if segment.duration_secs > MIN_SPLIT_DURATION {
+            let half = segment.duration_secs / 2.0;
+            eprintln!(
+                "  -> {:.2} MB (too large, splitting {:.1}s into 2x {:.1}s)",
+                size as f64 / (1024.0 * 1024.0),
+                segment.duration_secs,
+                half,
+            );
+            queue.push_front(Segment {
+                start_secs: segment.start_secs + half,
+                duration_secs: segment.duration_secs - half,
+            });
+            queue.push_front(Segment {
+                start_secs: segment.start_secs,
+                duration_secs: half,
+            });
+            continue;
+        }
+
+        eprintln!(
+            "  -> {:.2} MB (too large, segment too short to split — degrading quality)",
+            size as f64 / (1024.0 * 1024.0),
+        );
+
+        let temp_path = temp_output_path(&output_stem, temp_counter);
+        temp_counter += 1;
 
         let size = strategy::auto_encode(
             &args.input,
-            &output_path,
+            &temp_path,
             target_bytes,
             &initial,
-            start_secs,
-            duration_secs,
+            segment.start_secs,
+            segment.duration_secs,
         )?;
 
         let size_mb = size as f64 / (1024.0 * 1024.0);
-        eprintln!("  -> {:.2} MB", size_mb);
-        outputs.push(output_path);
+        eprintln!("  -> {:.2} MB (degraded quality)", size_mb);
+        temp_paths.push(temp_path);
+    }
+
+    let final_count = temp_paths.len() as u32;
+    let mut outputs: Vec<PathBuf> = Vec::new();
+
+    for (index, temp_path) in temp_paths.iter().enumerate() {
+        let final_path = chunk_output_path(&output_stem, index as u32, final_count);
+        std::fs::rename(temp_path, &final_path)?;
+        outputs.push(final_path);
     }
 
     eprintln!("\ndone — {} chunk(s) written:", outputs.len());
